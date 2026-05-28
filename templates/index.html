@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MyShell — Web Command Line Interface</title>
+    <!-- Import JetBrains Mono for authentic coder styling -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0b0c10;
+            --terminal-bg: rgba(15, 17, 26, 0.75);
+            --border-glow: rgba(0, 255, 170, 0.3);
+            --text-color: #f8f8f2;
+            --accent-cyan: #00ffaa;
+            --accent-blue: #00bfff;
+            --title-bg: rgba(25, 28, 41, 0.85);
+            --font-family: 'JetBrains Mono', monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            background-image: 
+                radial-gradient(at 10% 20%, rgba(26, 21, 44, 0.8) 0px, transparent 50%),
+                radial-gradient(at 90% 80%, rgba(10, 35, 30, 0.8) 0px, transparent 50%),
+                linear-gradient(135deg, #090a0f 0%, #121520 100%);
+            color: var(--text-color);
+            font-family: var(--font-family);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            overflow: hidden;
+        }
+
+        /* Ambient Glow Backdrop */
+        .ambient-glow {
+            position: absolute;
+            width: 500px;
+            height: 500px;
+            background: radial-gradient(circle, rgba(0, 255, 170, 0.1) 0%, rgba(0, 191, 255, 0.05) 50%, transparent 100%);
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1;
+            pointer-events: none;
+            filter: blur(80px);
+        }
+
+        /* Glassmorphism Terminal Window */
+        .terminal-window {
+            position: relative;
+            width: 100%;
+            max-width: 950px;
+            height: 80vh;
+            max-height: 680px;
+            background: var(--terminal-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            box-shadow: 
+                0 25px 50px -12px rgba(0, 0, 0, 0.7),
+                0 0 30px rgba(0, 255, 170, 0.05);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            z-index: 10;
+        }
+
+        /* Glowing Border effect on hover */
+        .terminal-window::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            border-radius: 12px;
+            padding: 1px;
+            background: linear-gradient(135deg, rgba(0, 255, 170, 0.3), rgba(0, 191, 255, 0.1), rgba(255, 255, 255, 0.05));
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            pointer-events: none;
+            transition: opacity 0.5s ease;
+        }
+
+        /* Title Bar */
+        .title-bar {
+            background: var(--title-bg);
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            user-select: none;
+        }
+
+        /* Mac-like Window Controls */
+        .window-controls {
+            display: flex;
+            gap: 8px;
+            margin-right: 20px;
+        }
+
+        .control-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .control-dot.close { background-color: #ff5f56; }
+        .control-dot.minimize { background-color: #ffbd2e; }
+        .control-dot.maximize { background-color: #27c93f; }
+
+        .window-title {
+            font-size: 13px;
+            font-weight: 500;
+            color: rgba(255, 255, 255, 0.7);
+            letter-spacing: 0.5px;
+            flex-grow: 1;
+            text-align: center;
+            margin-right: 60px; /* offset controls to center title */
+        }
+
+        .session-badge {
+            font-size: 11px;
+            background: rgba(0, 255, 170, 0.15);
+            color: var(--accent-cyan);
+            border: 1px solid rgba(0, 255, 170, 0.3);
+            padding: 2px 8px;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .session-badge::before {
+            content: '';
+            width: 6px;
+            height: 6px;
+            background-color: var(--accent-cyan);
+            border-radius: 50%;
+            box-shadow: 0 0 8px var(--accent-cyan);
+            display: inline-block;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.4; }
+            50% { opacity: 1; }
+            100% { opacity: 0.4; }
+        }
+
+        /* Terminal Body */
+        .terminal-body {
+            flex-grow: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            scroll-behavior: smooth;
+        }
+
+        /* Custom Scrollbar */
+        .terminal-body::-webkit-scrollbar {
+            width: 8px;
+        }
+        .terminal-body::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.1);
+        }
+        .terminal-body::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+        }
+        .terminal-body::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        /* Output & History */
+        .output-history {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            white-space: pre-wrap;
+            word-break: break-all;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .command-line-history {
+            margin-bottom: 4px;
+        }
+
+        .input-text {
+            color: #ffffff;
+            font-weight: 500;
+        }
+
+        .output-text {
+            color: #d1d5db;
+        }
+
+        /* Active Command Input Line */
+        .input-line {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            font-size: 14px;
+            line-height: 1.5;
+            position: relative;
+        }
+
+        .prompt-text {
+            white-space: nowrap;
+            user-select: none;
+        }
+
+        .input-container {
+            flex-grow: 1;
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .terminal-input {
+            width: 100%;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: #ffffff;
+            font-family: var(--font-family);
+            font-size: 14px;
+            caret-color: transparent; /* hide native cursor to use custom blinking block */
+            resize: none;
+        }
+
+        /* Blinking Cursor block */
+        .custom-cursor {
+            display: inline-block;
+            width: 8px;
+            height: 15px;
+            background-color: var(--accent-cyan);
+            box-shadow: 0 0 6px var(--accent-cyan);
+            margin-left: 2px;
+            animation: blink 1s step-end infinite;
+            position: absolute;
+            pointer-events: none;
+        }
+
+        @keyframes blink {
+            from, to { background-color: transparent; box-shadow: none; }
+            50% { background-color: var(--accent-cyan); box-shadow: 0 0 6px var(--accent-cyan); }
+        }
+
+        /* Loader */
+        .loader-dots {
+            display: inline-flex;
+            gap: 4px;
+            margin-left: 8px;
+            align-self: center;
+        }
+        .loader-dot {
+            width: 6px;
+            height: 6px;
+            background-color: var(--accent-cyan);
+            border-radius: 50%;
+            animation: bounce 1.4s infinite ease-in-out both;
+        }
+        .loader-dot:nth-child(1) { animation-delay: -0.32s; }
+        .loader-dot:nth-child(2) { animation-delay: -0.16s; }
+
+        @keyframes bounce {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1.0); }
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* ANSI Color Overrides (Dracula/Neon inspired) */
+        .ansi-bold { font-weight: bold; }
+        .ansi-underline { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="ambient-glow"></div>
+    <div class="terminal-window" id="terminalWindow">
+        <!-- Title Bar -->
+        <div class="title-bar">
+            <div class="window-controls">
+                <div class="control-dot close" title="Close Session"></div>
+                <div class="control-dot minimize"></div>
+                <div class="control-dot maximize"></div>
+            </div>
+            <div class="window-title">myshell@web-terminal: ~</div>
+            <div class="session-badge" id="sessionBadge">Active</div>
+        </div>
+
+        <!-- Terminal body -->
+        <div class="terminal-body" id="terminalBody">
+            <div class="output-history" id="outputHistory">
+                <!-- Session startup welcome message will load here -->
+            </div>
+
+            <!-- Current input prompt line -->
+            <div class="input-line" id="inputLine">
+                <span class="prompt-text" id="promptSpan">myshell$</span>
+                <div class="input-container">
+                    <input type="text" class="terminal-input" id="terminalInput" autofocus autocomplete="off" spellcheck="false">
+                    <span class="custom-cursor" id="customCursor"></span>
+                </div>
+                <div class="loader-dots hidden" id="terminalLoader">
+                    <div class="loader-dot"></div>
+                    <div class="loader-dot"></div>
+                    <div class="loader-dot"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const terminalBody = document.getElementById('terminalBody');
+        const outputHistory = document.getElementById('outputHistory');
+        const promptSpan = document.getElementById('promptSpan');
+        const terminalInput = document.getElementById('terminalInput');
+        const customCursor = document.getElementById('customCursor');
+        const terminalLoader = document.getElementById('terminalLoader');
+        const sessionBadge = document.getElementById('sessionBadge');
+
+        let sessionId = null;
+        let commandHistory = [];
+        let historyIndex = -1;
+        let isExecuting = false;
+
+        // Position custom cursor dynamically at the current text insertion point
+        function updateCursorPosition() {
+            const val = terminalInput.value;
+            const selStart = terminalInput.selectionStart || 0;
+            const textBeforeCursor = val.substring(0, selStart);
+            
+            // Create a temporary span to measure text width before caret
+            const tempSpan = document.createElement('span');
+            tempSpan.style.font = window.getComputedStyle(terminalInput).font;
+            tempSpan.style.visibility = 'hidden';
+            tempSpan.style.position = 'absolute';
+            tempSpan.style.whiteSpace = 'pre';
+            tempSpan.textContent = textBeforeCursor;
+            document.body.appendChild(tempSpan);
+            
+            const textWidth = tempSpan.getBoundingClientRect().width;
+            document.body.removeChild(tempSpan);
+            
+            customCursor.style.left = `${textWidth}px`;
+        }
+
+        // Attach listeners to trigger update on navigation, clicks, selections and keyup/down
+        terminalInput.addEventListener('input', updateCursorPosition);
+        terminalInput.addEventListener('keydown', () => setTimeout(updateCursorPosition, 0));
+        terminalInput.addEventListener('keyup', updateCursorPosition);
+        terminalInput.addEventListener('click', updateCursorPosition);
+        terminalInput.addEventListener('focus', updateCursorPosition);
+        terminalInput.addEventListener('select', updateCursorPosition);
+
+        // Re-focus input whenever terminal body is clicked
+        terminalBody.addEventListener('click', () => {
+            if (!isExecuting) {
+                terminalInput.focus();
+            }
+        });
+
+        // Keep input focused
+        terminalInput.addEventListener('blur', () => {
+            if (!isExecuting) {
+                setTimeout(() => terminalInput.focus(), 10);
+            }
+        });
+
+        // ANSI Color Parser
+        function ansiToHtml(text) {
+            let escaped = text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;");
+
+            const ansiRegex = /\x1b\[([0-9;]*)m/g;
+            let currentStyles = [];
+            
+            // Vibrant modern terminal color palette
+            const colorMap = {
+                "30": "color: #282a36;", // black
+                "31": "color: #ff5555;", // red
+                "32": "color: #50fa7b;", // green
+                "33": "color: #f1fa8c;", // yellow
+                "34": "color: #8be9fd;", // blue
+                "35": "color: #bd93f9;", // magenta
+                "36": "color: #00ffaa; text-shadow: 0 0 5px rgba(0,255,170,0.5);", // cyan (neon accent)
+                "37": "color: #f8f8f2;", // white
+                "90": "color: #6272a4;", // bright black (gray)
+                "91": "color: #ff6e6e;", // bright red
+                "92": "color: #69ff94;", // bright green
+                "93": "color: #ffffa5;", // bright yellow
+                "94": "color: #d6acff;", // bright blue
+                "95": "color: #d6acff;", // bright magenta
+                "96": "color: #a4ffff;", // bright cyan
+                "97": "color: #ffffff;", // bright white
+                "1": "font-weight: bold;",
+                "4": "text-decoration: underline;",
+            };
+
+            let result = "";
+            let lastIndex = 0;
+            let match;
+
+            while ((match = ansiRegex.exec(escaped)) !== null) {
+                result += escaped.substring(lastIndex, match.index);
+                const codes = match[1].split(";");
+                
+                if (codes.includes("0") || match[1] === "") {
+                    // Reset styling
+                    if (currentStyles.length > 0) {
+                        result += "</span>".repeat(currentStyles.length);
+                        currentStyles = [];
+                    }
+                } else {
+                    let spanStyles = [];
+                    for (const code of codes) {
+                        if (colorMap[code]) {
+                            spanStyles.push(colorMap[code]);
+                        }
+                    }
+                    if (spanStyles.length > 0) {
+                        result += `<span style="${spanStyles.join(' ')}">`;
+                        currentStyles.push(spanStyles);
+                    }
+                }
+                lastIndex = ansiRegex.lastIndex;
+            }
+            
+            result += escaped.substring(lastIndex);
+            if (currentStyles.length > 0) {
+                result += "</span>".repeat(currentStyles.length);
+            }
+            return result;
+        }
+
+        // Helper to escape HTML tags for printing text safely
+        function escapeHtml(text) {
+            return text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;");
+        }
+
+        // Set up connection session
+        async function startSession() {
+            sessionBadge.textContent = "Connecting...";
+            sessionBadge.style.borderColor = "rgba(255, 189, 46, 0.3)";
+            sessionBadge.style.color = "#ffbd2e";
+            
+            try {
+                const response = await fetch('/api/session', { method: 'POST' });
+                if (!response.ok) throw new Error('Session connection failed');
+                
+                const data = await response.json();
+                sessionId = data.session_id;
+                
+                // Parse welcome banner and prompt
+                const lines = data.welcome.split('\n');
+                const initialPrompt = lines.pop();
+                const welcomeMessage = lines.join('\n');
+                
+                // Set output and active prompt
+                outputHistory.innerHTML = `<div class="output-text">${ansiToHtml(welcomeMessage)}</div>`;
+                promptSpan.innerHTML = ansiToHtml(initialPrompt);
+                
+                sessionBadge.textContent = "Connected";
+                sessionBadge.style.borderColor = "rgba(0, 255, 170, 0.3)";
+                sessionBadge.style.color = "var(--accent-cyan)";
+                
+                terminalInput.disabled = false;
+                terminalInput.focus();
+                updateCursorPosition();
+            } catch (err) {
+                console.error(err);
+                outputHistory.innerHTML = `<div style="color: #ff5555;">[Fatal Error] Unable to open shell session. Please make sure the Flask server is running and myshell.py is functional.</div>`;
+                sessionBadge.textContent = "Offline";
+                sessionBadge.style.borderColor = "rgba(255, 95, 86, 0.3)";
+                sessionBadge.style.color = "#ff5f56";
+                terminalInput.disabled = true;
+                customCursor.classList.add('hidden');
+            }
+        }
+
+        // Send a command to the server and stream output
+        async function runCommand(command) {
+            if (isExecuting) return;
+            isExecuting = true;
+            
+            // Add command line to history display
+            const commandHistoryLine = document.createElement('div');
+            commandHistoryLine.className = 'command-line-history';
+            commandHistoryLine.innerHTML = `<span class="prompt-text">${promptSpan.innerHTML}</span> <span class="input-text">${escapeHtml(command)}</span>`;
+            outputHistory.appendChild(commandHistoryLine);
+            
+            // Hide input prompt line while executing
+            terminalInput.disabled = true;
+            terminalInput.value = "";
+            updateCursorPosition();
+            customCursor.classList.add('hidden');
+            terminalLoader.classList.remove('hidden');
+            
+            // Create active output element for streaming
+            const activeOutput = document.createElement('div');
+            activeOutput.className = 'output-text';
+            outputHistory.appendChild(activeOutput);
+            
+            let accumulatedText = "";
+            
+            try {
+                const response = await fetch('/api/execute', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ session_id: sessionId, command: command })
+                });
+                
+                if (!response.ok) throw new Error('Execution request failed');
+                
+                // Read Server-Sent Events stream using Fetch readable stream
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder("utf-8");
+                let streamBuffer = "";
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    streamBuffer += decoder.decode(value, { stream: true });
+                    
+                    // SSE packets are separated by double newlines: "data: <content>\n\n"
+                    const lines = streamBuffer.split('\n\n');
+                    streamBuffer = lines.pop(); // keep last incomplete packet
+                    
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const jsonStr = line.slice(6);
+                            try {
+                                const chunkText = JSON.parse(jsonStr);
+                                accumulatedText += chunkText;
+                                activeOutput.innerHTML = ansiToHtml(accumulatedText);
+                                terminalBody.scrollTop = terminalBody.scrollHeight;
+                            } catch (e) {
+                                console.error("Error decoding chunk:", e);
+                            }
+                        }
+                    }
+                }
+                
+                // Parse prompt from accumulated output
+                const outputLines = accumulatedText.split('\n');
+                const nextPrompt = outputLines.pop();
+                const commandOutput = outputLines.join('\n');
+                
+                // Set final output and new prompt
+                activeOutput.innerHTML = ansiToHtml(commandOutput + (commandOutput ? '\n' : ''));
+                promptSpan.innerHTML = ansiToHtml(nextPrompt);
+                
+            } catch (err) {
+                console.error(err);
+                activeOutput.innerHTML += `<span style="color: #ff5f56;"><br>[Connection Lost: Shell process terminated or web server became unreachable]</span><br>`;
+            } finally {
+                isExecuting = false;
+                terminalInput.disabled = false;
+                terminalInput.focus();
+                customCursor.classList.remove('hidden');
+                terminalLoader.classList.add('hidden');
+                updateCursorPosition();
+                terminalBody.scrollTop = terminalBody.scrollHeight;
+            }
+        }
+
+        // Input Submit handler
+        terminalInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                const command = terminalInput.value.trim();
+                if (command) {
+                    commandHistory.push(command);
+                    historyIndex = commandHistory.length;
+                    runCommand(command);
+                } else {
+                    // Empty command: just print a new line with current prompt
+                    const emptyLine = document.createElement('div');
+                    emptyLine.className = 'command-line-history';
+                    emptyLine.innerHTML = `<span class="prompt-text">${promptSpan.innerHTML}</span>`;
+                    outputHistory.appendChild(emptyLine);
+                    terminalInput.value = "";
+                    updateCursorPosition();
+                    terminalBody.scrollTop = terminalBody.scrollHeight;
+                }
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (commandHistory.length > 0 && historyIndex > 0) {
+                    historyIndex--;
+                    terminalInput.value = commandHistory[historyIndex];
+                    updateCursorPosition();
+                }
+            } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (historyIndex < commandHistory.length - 1) {
+                    historyIndex++;
+                    terminalInput.value = commandHistory[historyIndex];
+                    updateCursorPosition();
+                } else if (historyIndex === commandHistory.length - 1) {
+                    historyIndex = commandHistory.length;
+                    terminalInput.value = "";
+                    updateCursorPosition();
+                }
+            }
+        });
+
+        // Initialize on load
+        window.addEventListener('DOMContentLoaded', startSession);
+
+        // Terminate session gracefully on page unload
+        window.addEventListener('beforeunload', () => {
+            if (sessionId) {
+                navigator.sendBeacon(`/api/session/${sessionId}`, null);
+            }
+        });
+    </script>
+</body>
+</html>
