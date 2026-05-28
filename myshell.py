@@ -467,8 +467,8 @@ def call_openrouter(prompt: str) -> int:
     )
     
     try:
-        # Limit urlopen connection to 15 seconds to avoid infinite hangs
-        with urllib.request.urlopen(req, timeout=15) as response:
+        # Limit urlopen connection to 10 seconds to avoid infinite hangs
+        with urllib.request.urlopen(req, timeout=10) as response:
             res_data = json.loads(response.read().decode('utf-8'))
             choices = res_data.get("choices", [])
             if choices:

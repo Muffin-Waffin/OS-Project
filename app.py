@@ -134,6 +134,13 @@ def execute():
     proc = sess["proc"]
     q = sess["queue"]
     
+    # Drain any leftover output in the queue from a previous timed-out command
+    while not q.empty():
+        try:
+            q.get_nowait()
+        except queue.Empty:
+            break
+            
     token = uuid.uuid4().hex
     sentinel = f"__MYSHELL_FINISHED_{token}__"
     
