@@ -473,9 +473,12 @@
                 const data = await response.json();
                 sessionId = data.session_id;
                 
-                // Parse welcome banner and prompt
-                const lines = data.welcome.split('\n');
-                const initialPrompt = lines.pop();
+                // Parse welcome banner and prompt safely
+                let lines = data.welcome.split('\n');
+                while (lines.length > 0 && lines[lines.length - 1].trim() === "") {
+                    lines.pop();
+                }
+                const initialPrompt = lines.pop() || "myshell$ ";
                 const welcomeMessage = lines.join('\n');
                 
                 // Set output and active prompt

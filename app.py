@@ -83,11 +83,19 @@ def create_session():
     t = threading.Thread(target=reader_thread, daemon=True)
     t.start()
     
-    # Wait briefly to capture the welcome banner and prompt
-    time.sleep(0.5)
+    # Wait until the shell has initialized and printed the prompt (ends with $ or #), up to 2 seconds
     welcome = ""
-    while not q.empty():
-        welcome += q.get_nowait()
+    start_time = time.time()
+    while time.time() - start_time < 2.0:
+        try:
+            char = q.get(timeout=0.02)
+            welcome += char
+            stripped = welcome.strip()
+            if stripped.endswith("$") or stripped.endswith("#"):
+                break
+        except queue.Empty:
+            if welcome and time.time() - start_time > 0.5:
+                break
         
     sessions[sid] = {
         "proc": proc,
